@@ -29,6 +29,15 @@
                 ormolu = workaround140774 super.ormolu;
               };
           };
+        baseHaskellPackages = (if system == "aarch64-darwin" then m1MacHsBuildTools else pkgs.haskellPackages);
+        haskellPackages = baseHaskellPackages.override {
+          overrides = self: super:
+            {
+              hylide = self.callPackage ./hylide { };
+              hylogen = self.callPackage ./hylogen { };
+              fsnotify = pkgs.haskell.lib.dontCheck (haskellPackages.callHackage "fsnotify" "0.2.1.2" { });
+            };
+        };
         project = returnShellEnv:
           pkgs.haskellPackages.developPackage {
             inherit returnShellEnv;
@@ -41,9 +50,7 @@
             };
             modifier = drv:
               pkgs.haskell.lib.addBuildTools drv
-                (with (if system == "aarch64-darwin"
-                then m1MacHsBuildTools
-                else pkgs.haskellPackages); [
+                (with haskellPackages; [
                   # Specify your build/dev dependencies here. 
                   cabal-fmt
                   cabal-install
@@ -51,6 +58,8 @@
                   haskell-language-server
                   ormolu
                   pkgs.nixpkgs-fmt
+                  hylide
+                  hylogen
                 ]);
           };
       in

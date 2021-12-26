@@ -5,4 +5,4 @@ set -xe
 # point, with the specified args.
 #
 # If you change ./.ghcid, ghcid will automatically reload.
-exec nix develop -c ghcid
+exec nixf develop -c ghcid

@@ -39,15 +39,24 @@
             };
         };
         project = returnShellEnv:
-          pkgs.haskellPackages.developPackage {
+          haskellPackages.developPackage {
             inherit returnShellEnv;
             name = "haskell-template";
             root = ./.;
             withHoogle = false;
-            overrides = self: super: with pkgs.haskell.lib; {
+            overrides = self: super:
               # Use callCabal2nix to override Haskell dependencies here
               # cf. https://tek.brick.do/K3VXJd8mEKO7
-            };
+              let
+                workaround140774 = hpkg: with pkgs.haskell.lib;
+                  overrideCabal hpkg (drv: {
+                    enableSeparateBinOutput = false;
+                  });
+              in
+              {
+                ghcid = workaround140774 super.ghcid;
+                ormolu = workaround140774 super.ormolu;
+              };
             modifier = drv:
               pkgs.haskell.lib.addBuildTools drv
                 (with haskellPackages; [
@@ -55,11 +64,19 @@
                   cabal-fmt
                   cabal-install
                   ghcid
-                  haskell-language-server
                   ormolu
+                  haskell-language-server
                   pkgs.nixpkgs-fmt
                   hylide
                   hylogen
+                  cabal2nix
+                  reflex-dom-core
+                  reflex
+                  ghc-prim
+                  ghcjs-dom
+                  jsaddle
+                  jsaddle-warp
+                  clay
                 ]);
           };
       in

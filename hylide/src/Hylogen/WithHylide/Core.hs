@@ -7,11 +7,11 @@ import           Hylogen.Expr
 
 
 -- Writes GLSL, without sharing
--- toGLSL' :: Vec4 -> String
--- toGLSL' v = unlines [ "void main() {"
---                     , "    gl_FragColor = " <> show v <> ";"
---                     , "}"
---                     ]
+toGLSL' :: Vec4 -> String
+toGLSL' v = unlines [ "void main() {"
+                     , "    gl_FragColor = " <> show v <> ";"
+                     , "}"
+                     ]
 
 
 

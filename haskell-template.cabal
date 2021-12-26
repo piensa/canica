@@ -44,6 +44,14 @@ executable haskell-template
     , time
     , unliftio
     , with-utf8
+    , reflex-dom-core
+    , jsaddle
+    , ghcjs-dom
+    , reflex
+    , jsaddle-warp
+    , hylogen
+    , hylide
+    , clay
 
   mixins:
     base hiding (Prelude),

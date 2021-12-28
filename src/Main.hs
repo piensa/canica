@@ -4,11 +4,17 @@
 {-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE BlockArguments #-}
 module Main where
 
 import Hylogen.WithHylide (Vec4, vec4, mouse, time, x_, uvN, y_)
 import Clay (Css, body, (?), background, black, green, border, dashed, yellow, px, render,
-             color, green)
+             color, green, flex, display, height, html,
+              margin, pct, column, direction, padding, em, 
+              flexDirection, flexBasis, width, marginTop, 
+              textAlign, fontFamily, overflow, auto, left, canvas,
+               textarea, Auto (auto), matchParent, TextAlign)
+import Clay.Flexbox as CF
 
 import Data.Text.Lazy (unpack)
 import Data.Text as Text (Text, unlines, pack)
@@ -75,6 +81,7 @@ import GHCJS.DOM.CanvasRenderingContext2D ( drawImage )
 import GHCJS.DOM (currentDocumentUnchecked)
 import qualified GHCJS.DOM.EventTargetClosures as DOM (EventName, unsafeEventName)
 import Language.Javascript.JSaddle.Object (new, jsg)
+import qualified UnliftIO.Process as Clay.Text.TextAlign
 
 -- Writes GLSL, without sharing
 toGLSL' :: Vec4 -> Text
@@ -251,53 +258,46 @@ main = run 3708 $ do
   where
     htmlHead :: DomBuilder t m => m ()
     htmlHead = do
-        el "style" (text cssOld)
         el "style" (text css)
+        el "style" (text "canvas {object-fit: contain;}")
+        el "style" (text "textarea {resize: vertical;}")
         el "title" (text "Fragment Shader")
 
 
 clayCss::Css
-clayCss = body ?
-    do background  black
-       color       green
-       border      dashed (px 2) yellow
+clayCss = html ? 
+      do margin (px 0) (px 0) (px 0) (px 0)
+         height (pct 100)
+         body ?
+            do  background  black
+                display Clay.flex 
+                height (pct 100)
+         ".left" ?
+            do  
+                display Clay.flex
+                padding (em 1) (em 0) (em 0) (em 0)   
+                CF.flex 1 1 (em 0)
+                CF.flexDirection (FlexDirection "column")
+         ".right" ?
+            do  
+                CF.flex 1 1 (em 0)
+         textarea ?
+            do
+--                "resize" "vertical"
+                height (pct 50)
+         canvas ?
+            do
+                height (pct 100)
+                width (pct 100)
+--                "object-fit" "contain"                
+
+         ".error" ?
+            do
+                marginTop (em 1)
+                textAlign matchParent
+                width (pct 100)
+                overflow auto
+
 
 css :: Text
 css = Text.pack $ unpack $ render clayCss
-
-cssOld :: Text.Text
-cssOld = Text.unlines
-    [ "html {"
-    , "  margin: 0;"
-    , "  height: 100%;"
-    , "}"
-    , "body {"
-    , "  display: flex;"
-    , "  height: 100%;"
-    , "}"
-    , ".left {"
-    , "  flex:1 1 0;"
-    , "  display:flex;"
-    , "  flex-direction:column;"
-    , "  padding:1em;"
-    , "}"
-    , ".right {"
-    , "  flex:1 1 0;"
-    , "}"
-    , "textarea {"
-    , "  resize:vertical;"
-    , "  height:50%;"
-    , "}"
-    , ".error {"
-    , "  margin-top:1em;"
-    , "  text-align: left;"
-    , "  font-family:mono;"
-    , "  width:100%;"
-    , "  overflow: auto;"
-    , "}"
-    , "canvas {"
-    , "  height:100%;"
-    , "  width:100%;"
-    , "  object-fit:contain;"
-    , "}"
-    ]

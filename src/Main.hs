@@ -7,7 +7,7 @@
 module Main where
 
 import Hylogen.WithHylide (Vec4, vec4, mouse, time, x_, uvN, y_)
-import Clay (Css, body, (?), background, black, green, border, dashed, yellow, px, compact, render,
+import Clay (Css, body, (?), background, black, green, border, dashed, yellow, px, render,
              color, green)
 
 import Data.Text.Lazy (unpack)
@@ -26,11 +26,52 @@ import Reflex (performEvent, leftmost, tag, newTriggerEvent,
                )
 import Language.Javascript.JSaddle.Warp (run)
 
-import GHCJS.DOM.Document
-import GHCJS.DOM.Types hiding (Text)
+import GHCJS.DOM.Document ( createElement )
+import GHCJS.DOM.Types
+    ( Element(Element),
+      liftDOM,
+      uncheckedCastTo,
+      unsafeCastTo,
+      JSString,
+      ArrayBuffer(ArrayBuffer),
+      CanvasRenderingContext2D(CanvasRenderingContext2D),
+      Float32Array(Float32Array),
+      HTMLCanvasElement(HTMLCanvasElement),
+      MonadDOM,
+      RenderingContext(RenderingContext),
+      WebGLContextEvent,
+      WebGLRenderingContext(WebGLRenderingContext) )
 import GHCJS.DOM.HTMLCanvasElement
+    ( getContext,
+      getContextUnsafe,
+      getHeight,
+      getWidth,
+      setHeight,
+      setWidth )
+
+import GHCJS.DOM.WebGLRenderingContextBase as WGL
 import GHCJS.DOM.WebGLRenderingContextBase
-import GHCJS.DOM.CanvasRenderingContext2D
+    ( attachShader,
+      bindBuffer,
+      bufferData,
+      compileShader,
+      createBuffer,
+      createProgram,
+      createShader,
+      drawArrays,
+      enableVertexAttribArray,
+      getAttribLocation,
+      getDrawingBufferHeight,
+      getDrawingBufferWidth,
+      getShaderInfoLog,
+      getUniformLocation,
+      linkProgram,
+      shaderSource,
+      uniform2f,
+      useProgram,
+      vertexAttribPointer,
+      viewport )
+import GHCJS.DOM.CanvasRenderingContext2D ( drawImage )
 import GHCJS.DOM (currentDocumentUnchecked)
 import qualified GHCJS.DOM.EventTargetClosures as DOM (EventName, unsafeEventName)
 import Language.Javascript.JSaddle.Object (new, jsg)
@@ -61,22 +102,6 @@ colorShader = vec4 (a, b, c, d)
 
 trivialFragmentShader :: Text
 trivialFragmentShader = toGLSL' colorShader
-
--- | An example fragment shader program, drawing a red circle
-trivialFragmentShaderOld :: Text
-trivialFragmentShaderOld = Text.unlines
-  [ "precision mediump float;"
-  , "uniform vec2 u_windowSize;"
-  , "void main() {"
-  , "  float s = 2.0 / min(u_windowSize.x, u_windowSize.y);"
-  , "  vec2 pos = s * (gl_FragCoord.xy - 0.5 * u_windowSize);"
-  , "  // pos is a scaled pixel position, (0,0) is in the center of the canvas"
-  , "  // If the position is outside the inscribed circle, make it transparent"
-  , "  if (length(pos) > 1.0) { gl_FragColor = vec4(0,0,0,0); return; }"
-  , "  // Otherwise, return red"
-  , "  gl_FragColor = vec4(1.0,2.0,0.0,1.0);"
-  , "}"
-  ]
 
 onOffScreenCanvas :: MonadDOM m => HTMLCanvasElement -> (HTMLCanvasElement -> m ()) -> m ()
 onOffScreenCanvas onScreen paint = do
@@ -112,7 +137,7 @@ paintGL printErr fragmentShaderSource canvas = do
       viewport gl 0 0 w h
 
       buffer <- createBuffer gl
-      bindBuffer gl ARRAY_BUFFER (Just buffer)
+      bindBuffer gl WGL.ARRAY_BUFFER (Just buffer)
       array <- liftDOM (new (jsg ("Float32Array"::Text))
             [[ -1.0, -1.0,
                 1.0, -1.0,
@@ -122,14 +147,14 @@ paintGL printErr fragmentShaderSource canvas = do
                 1.0,  1.0 :: Double]])
         >>= unsafeCastTo Float32Array
       let array' = uncheckedCastTo ArrayBuffer array
-      bufferData gl ARRAY_BUFFER (Just array') STATIC_DRAW
+      bufferData gl WGL.ARRAY_BUFFER (Just array') STATIC_DRAW
 
-      vertexShader <- createShader gl VERTEX_SHADER
+      vertexShader <- createShader gl WGL.VERTEX_SHADER
       shaderSource gl (Just vertexShader) vertexShaderSource
       compileShader gl (Just vertexShader)
       -- jsg "console" ^. js1 "log" (gl ^. js1 "getShaderInfoLog" vertexShader)
 
-      fragmentShader <- createShader gl FRAGMENT_SHADER
+      fragmentShader <- createShader gl WGL.FRAGMENT_SHADER
       shaderSource gl (Just fragmentShader) fragmentShaderSource
       compileShader gl (Just fragmentShader)
       -- jsg "console" ^. js1 "log" (gl ^. js1 "getShaderInfoLog" fragmentShader)
@@ -151,7 +176,7 @@ paintGL printErr fragmentShaderSource canvas = do
       windowSizeLocation <- getUniformLocation gl (Just program) ("u_windowSize" :: Text)
       uniform2f gl (Just windowSizeLocation) (fromIntegral w) (fromIntegral h)
 
-      drawArrays gl TRIANGLES 0 6
+      drawArrays gl WGL.TRIANGLES 0 6
       return ()
 
 webglcontextrestored :: DOM.EventName HTMLCanvasElement WebGLContextEvent
@@ -162,7 +187,7 @@ webglcontextlost = DOM.unsafeEventName "webglcontextlost"
 
 fragmentShaderCanvas ::
     (MonadWidget t m) =>
-    (Map Text Text) ->
+    Map Text Text ->
     Dynamic t Text ->
     m (Dynamic t (Maybe Text))
 fragmentShaderCanvas attrs fragmentShaderCanvasRaw
@@ -170,11 +195,11 @@ fragmentShaderCanvas attrs fragmentShaderCanvasRaw
 
 fragmentShaderCanvas' ::
     (MonadWidget t m) =>
-    (Map Text Text) ->
+    Map Text Text ->
     Dynamic t Text ->
     m (El t, Dynamic t (Maybe Text))
 fragmentShaderCanvas' attrs fragmentShaderSource = do
-  (canvasEl, _) <- elAttr' "canvas" attrs $ blank
+  (canvasEl, _) <- elAttr' "canvas" attrs blank
   (eError, reportError) <- newTriggerEvent
   pb <- getPostBuild
 
@@ -238,7 +263,7 @@ clayCss = body ?
        border      dashed (px 2) yellow
 
 css :: Text
-css = Text.pack $ unpack $ (render clayCss)
+css = Text.pack $ unpack $ render clayCss
 
 cssOld :: Text.Text
 cssOld = Text.unlines

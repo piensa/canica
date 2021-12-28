@@ -14,25 +14,18 @@
         overlays = [ ];
         pkgs =
           import nixpkgs { inherit system overlays; config.allowBroken = true; };
-        # https://github.com/NixOS/nixpkgs/issues/140774#issuecomment-976899227
-        m1MacHsBuildTools =
-          pkgs.haskellPackages.override {
-            overrides = self: super:
-              let
-                workaround140774 = hpkg: with pkgs.haskell.lib;
-                  overrideCabal hpkg (drv: {
-                    enableSeparateBinOutput = false;
-                  });
-              in
-              {
-                ghcid = workaround140774 super.ghcid;
-                ormolu = workaround140774 super.ormolu;
-              };
-          };
-        baseHaskellPackages = (if system == "aarch64-darwin" then m1MacHsBuildTools else pkgs.haskellPackages);
-        haskellPackages = baseHaskellPackages.override {
+        haskellPackages = pkgs.haskellPackages.override {
           overrides = self: super:
+            # https://github.com/NixOS/nixpkgs/issues/140774#issuecomment-976899227
+            let
+              workaround140774 = hpkg: with pkgs.haskell.lib;
+                overrideCabal hpkg (drv: {
+                  enableSeparateBinOutput = false;
+                });
+            in
             {
+              ghcid = workaround140774 super.ghcid;
+              ormolu = workaround140774 super.ormolu;
               hylide = self.callPackage ./hylide { };
               hylogen = self.callPackage ./hylogen { };
               fsnotify = pkgs.haskell.lib.dontCheck (haskellPackages.callHackage "fsnotify" "0.2.1.2" { });
@@ -61,8 +54,8 @@
               pkgs.haskell.lib.addBuildTools drv
                 (with haskellPackages; [
                   # Specify your build/dev dependencies here. 
-                  cabal-fmt
                   cabal-install
+                  cabal-fmt
                   ghcid
                   ormolu
                   haskell-language-server

@@ -5,9 +5,19 @@
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE RecursiveDo #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE ExplicitForAll #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module Main where
 
-import Hylogen.WithHylide (Vec4, vec4, mouse, time, x_, uvN, y_)
+
+import Hylogen.WithHylide
+import Data.Profunctor
+import Hylogen.Expr
+
 import Clay (Css, body, (?), background, black, green, border, dashed, yellow, px, render,
              color, green, flex, display, height, html,
               margin, pct, column, direction, padding, em, 
@@ -83,32 +93,6 @@ import qualified GHCJS.DOM.EventTargetClosures as DOM (EventName, unsafeEventNam
 import Language.Javascript.JSaddle.Object (new, jsg)
 import qualified UnliftIO.Process as Clay.Text.TextAlign
 
--- Writes GLSL, without sharing
-toGLSL' :: Vec4 -> Text
-toGLSL' v = Text.unlines [ "void main() {"
-                     , "    gl_FragColor = " <> show v <> ";"
-                     , "}"
-                     ]
-
-
-vertexShaderSource :: Text
-vertexShaderSource =
-  "attribute vec2 a_position;\
-  \void main() {\
-  \  gl_Position = vec4(a_position, 0, 1);\
-  \}"
-
-
-colorShader :: Vec4
-colorShader = vec4 (a, b, c, d)
-  where
-    a = 1
-    b = 0
-    c = 0
-    d = 1
-
-trivialFragmentShader :: Text
-trivialFragmentShader = toGLSL' colorShader
 
 onOffScreenCanvas :: MonadDOM m => HTMLCanvasElement -> (HTMLCanvasElement -> m ()) -> m ()
 onOffScreenCanvas onScreen paint = do
@@ -227,7 +211,7 @@ fragmentShaderCanvas' attrs fragmentShaderSource = do
 
   let eDraw = leftmost
                 [ updated fragmentShaderSource
-                , tag (current fragmentShaderSource) pb
+                , Reflex.tag (current fragmentShaderSource) pb
   --              , tag (current fragmentShaderSource) eContextBack
                 ]
 
@@ -283,12 +267,14 @@ clayCss = html ?
                 CF.flex 1 1 (em 0)
          textarea ?
             do
+-- TODO: Figure out how to do it properly              
 --                "resize" "vertical"
                 height (pct 50)
          canvas ?
             do
                 height (pct 100)
                 width (pct 100)
+-- TODO: Figure out how to do it properly              
 --                "object-fit" "contain"                
 
          ".error" ?
@@ -301,3 +287,110 @@ clayCss = html ?
 
 css :: Text
 css = Text.pack $ unpack $ render clayCss
+
+-- Writes GLSL, without sharing
+toGLSL' :: Vec4 -> Text
+toGLSL' v = Text.unlines [ "void main() {"
+                     , "    gl_FragColor = " <> show v <> ";"
+                     , "}"
+                     ]
+
+
+vertexShaderSource :: Text
+vertexShaderSource =
+  "attribute vec2 a_position;\
+  \void main() {\
+  \  gl_Position = vec4(a_position, 0, 1);\
+  \}"
+
+
+type Optic p s t a b = p a b -> p s t
+type Optic' p a b = Optic p a b a b
+type Iso s t a b = forall p. (Profunctor p) => Optic p s t a b
+type Iso' a b = Iso a b a b
+type Fold r s t a b = Optic (Forget r) s t a b
+type Getter s t a b = Fold a s t a b
+view :: forall s t a b. Getter s t a b -> s -> a
+view l = runForget (l (Forget id))
+
+norm :: (Floating a) => Iso' a a
+norm = dimap (\x -> x * 0.5 + 0.5) (\x -> x * 2 - 1)
+
+rep :: forall n. Veccable n => Vec n ->  Vec n -> Vec n
+rep c p = mod_  p c - 0.5 * c
+
+gate :: (Veccable n) => Vec n -> Vec n -> Vec n -> Vec n
+gate s e x = ((x `geq` s) * (x `lt` e)) ??? (1, 0)
+
+(???) :: (ToGLSLType a) => Booly -> (Expr a, Expr a) -> Expr a
+(???) c (a, b) = sel c a b
+
+queryTransformer :: (Vec2 -> Vec4) -> Vec2 -> Vec4
+queryTransformer x = x
+  & lmap (view norm)
+  -- & lmap (^*(1 - x_ audio))
+  -- & rgbF ((sin (rand time)) * 0.02)
+  -- & lmap (\x -> g $ vec2(x_ x, y_ x))
+
+g x = x
+  & (\x -> x - rep 0.1 x)
+
+
+-- rgbF :: Vec1 -> (Vec2 -> Vec4) -> (Vec2 -> Vec4)
+rgbF :: Vec1 -> Optic' (->) Vec2 Vec4
+rgbF offset q pos = vec4 (r, g, b, a)
+  where
+    r = q (pos + copy offset) & x_
+    g = q pos & y_
+    b = q (pos - copy offset) & z_
+    a = q pos & w_
+
+
+bb = bbqF (texture2D backBuffer) uvN
+bbqF x = x
+  & lmap (view norm)
+  & lmap (*0.9)
+  & rgbF 0.1
+  & rmap desat & rmap desat & rmap desat & rmap desat
+  & rmap (bpf 0.7 0.1)
+
+desat = hsv $ modY (*0.9)
+
+bpf pos delta = hsv (modX (clamp (pos - delta) (pos + delta)))
+
+-- fixme: make polymorphic
+modX :: (Vec1 -> Vec1) -> (Vec4 -> Vec4)
+modX f v = vec4 (f (x_ v), y_ v, z_ v, w_ v)
+modY :: (Vec1 -> Vec1) -> (Vec4 -> Vec4)
+modY f v = vec4 (x_ v, f (y_ v), z_ v, w_ v)
+modZ :: (Vec1 -> Vec1) -> (Vec4 -> Vec4)
+modZ f v = vec4 (x_ v, y_ v, f (z_ v), w_ v)
+modW :: (Vec1 -> Vec1) -> (Vec4 -> Vec4)
+modW f v = vec4 (x_ v, y_ v, z_ v, f (w_ v))
+
+
+less :: (Floating a) => Optic' (->) a a
+less = dimap (id) (*0.1)
+
+hsv :: Optic' (->) (Vec4) (Vec4)
+hsv = dimap rgb2hsv hsv2rgb
+
+v = vqF vq uvN
+
+vqF x = x
+  & lmap (\x -> x - rep 0.5 x)
+  & lmap (\x -> x - rep 0.5 x)
+  & lmap (cos)
+  & lmap (*(10))
+  & lmap (+(vec2 (0, less id time)))
+  & lmap (clamp (-1) 1)
+
+vq uv = y_ uv * 2  + sin (x_ uv + time)
+
+colorShader :: Vec4
+-- colorShader = vec4 (v, v, v, 1) & mix 0.1 bb
+colorShader = vec4 (1, 1, 1, 1)
+
+trivialFragmentShader :: Text
+trivialFragmentShader = toGLSL' colorShader
+
